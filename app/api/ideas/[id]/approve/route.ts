@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
 export async function POST(
   request: Request,
@@ -8,11 +9,11 @@ export async function POST(
 ) {
   const resolvedParams = await params;
   const ideaId = resolvedParams.id;
-  
+
   // Verify auth
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -38,5 +39,6 @@ export async function POST(
     }
   });
 
+  revalidatePath(`/dashboard/projects/${idea.project_id}`);
   return NextResponse.json({ success: true });
 }

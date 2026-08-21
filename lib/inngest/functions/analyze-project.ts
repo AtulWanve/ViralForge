@@ -61,6 +61,8 @@ export const analyzeProject = inngest.createFunction(
     }
 
     const analysis = await step.run("analyze-with-gemini", async () => {
+      // NOTE: This exact prompt is sent to Google's Gemini 2.5 Flash model
+      // It dynamically generates the Content Profile structure based on the provided references.
       const prompt = `
         Analyze these social media references for a project targeting ${project.target_platform}.
         Brand voice: ${project.brand_voice || 'Default'}
@@ -74,6 +76,7 @@ export const analyzeProject = inngest.createFunction(
         `).join('\n')}
 
         Extract patterns and return a JSON object with:
+        - schemaVersion (integer): Always 1
         - visual_style (string): General visual aesthetic
         - hooks (array of strings): Common attention grabbers used
         - caption_structure (string): How they structure their text
@@ -108,39 +111,52 @@ export const analyzeProject = inngest.createFunction(
       return validationResult.data;
     });
 
-    await step.run("save-analysis", async () => {
+    const saveAnalysis = await step.run("save-analysis", async () => {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
       );
 
-      if (generationId) {
-        const { data: existing } = await supabase
-          .from('content_profiles')
-          .select('raw_analysis')
-          .eq('project_id', projectId)
-          .maybeSingle();
+      const rawAnalysisToSave = {
+        ...analysis,
+        generationId
+      };
 
-        if (existing?.raw_analysis?.generationId && existing.raw_analysis.generationId > generationId) {
-          return { skipped: true, reason: 'newer generation exists' };
-        }
-      }
-
-      analysis.generationId = generationId;
-
-      const { error } = await supabase
-        .from('content_profiles')
-        .upsert({
-          project_id: projectId,
-          visual_style: analysis.visual_style,
-          hooks: analysis.hooks,
-          caption_structure: analysis.caption_structure,
-          format_mix: analysis.format_mix,
-          content_pillars: analysis.content_pillars,
-          raw_analysis: analysis
-        }, { onConflict: 'project_id' });
+      // Atomically save only when the stored generationId is absent or lower,
+      // so a stale analysis can never overwrite a newer one.
+      const { data: saved, error } = await supabase.rpc("save_profile_if_newer", {
+        p_project_id: projectId,
+        p_visual_style: analysis.visual_style,
+        p_hooks: analysis.hooks,
+        p_caption_structure: analysis.caption_structure,
+        p_format_mix: analysis.format_mix,
+        p_content_pillars: analysis.content_pillars,
+        p_raw_analysis: rawAnalysisToSave
+      });
 
       if (error) throw new Error(error.message);
+
+      // A project_not_found (ok: false) is a real error, not a skip.
+      if (!saved?.ok) throw new Error(saved?.error || 'Failed to save content profile');
+
+      return saved;
+    });
+
+    // Only a strictly newer stored generation means this analysis is stale and
+    // must be skipped. An equal generation (same_generation) already saved the
+    // profile; fall through so the retry can still complete the status
+    // transition below.
+    if (saveAnalysis?.reason === 'stale') {
+      return { skipped: true, reason: 'newer generation exists' };
+    }
+
+    // Split into its own retryable step so a failure here can be retried
+    // without re-entering the (already idempotent) profile write.
+    await step.run("mark-analysis-completed", async () => {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
 
       const { error: projectError } = await supabase
         .from('projects')

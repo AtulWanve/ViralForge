@@ -6,20 +6,82 @@ import { revalidatePath } from 'next/cache'
 import { Reference, Project } from '@/types/database'
 
 export async function checkAnalysisStatusAction(projectId: string) {
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) throw new Error('Unauthorized')
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      console.error('Auth error in checkAnalysisStatusAction:', authError)
+      return 'unknown' as const
+    }
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('analysis_status')
-    .eq('id', projectId)
-    .eq('user_id', user.id)
-    .single()
+    const { data, error } = await supabase
+      .from('projects')
+      .select('analysis_status, current_generation, updated_at')
+      .eq('id', projectId)
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-  if (error || !data) throw new Error(error?.message || 'Project not found')
+    if (error) {
+      console.error('Database error in checkAnalysisStatusAction:', error)
+      return 'unknown' as const
+    }
 
-  return data.analysis_status as 'idle' | 'analyzing' | 'completed' | 'error'
+    if (!data) {
+      console.warn('Project not found in checkAnalysisStatusAction:', projectId)
+      return 'idle' as const
+    }
+
+    // If status is analyzing but updated_at is more than 10 minutes old, reset to error
+    if (data.analysis_status === 'analyzing') {
+      const updatedAt = new Date(data.updated_at)
+      const now = new Date()
+      const diffMinutes = (now.getTime() - updatedAt.getTime()) / 1000 / 60
+
+      if (diffMinutes > 10) {
+        // Auto-reset stuck analyzing status
+        const staleCutoff = new Date(now.getTime() - 10 * 60 * 1000).toISOString()
+        
+        const { data: resetData, error: statusResetError } = await supabase
+          .from('projects')
+          .update({ analysis_status: 'error' })
+          .eq('id', projectId)
+          .eq('user_id', user.id)
+          .eq('current_generation', data.current_generation)
+          .eq('analysis_status', 'analyzing')
+          .lt('updated_at', staleCutoff)
+          .select('analysis_status')
+
+        if (statusResetError) {
+          console.error('Failed to reset stuck analyzing status:', statusResetError)
+        }
+
+        // If the update errored or matched no rows, re-read the current status
+        // (it may have been completed concurrently) and return that when available.
+        if (statusResetError || !resetData || resetData.length === 0) {
+          const { data: refreshedProject, error: refreshError } = await supabase
+            .from('projects')
+            .select('analysis_status')
+            .eq('id', projectId)
+            .eq('user_id', user.id)
+            .maybeSingle()
+
+          if (!refreshError && refreshedProject?.analysis_status) {
+            return refreshedProject.analysis_status as 'idle' | 'analyzing' | 'completed' | 'error'
+          }
+
+          // Could not confirm a new status; preserve the last known analyzing state
+          return (data.analysis_status || 'analyzing') as 'idle' | 'analyzing' | 'completed' | 'error'
+        }
+
+        return 'error' as const
+      }
+    }
+
+    return (data.analysis_status || 'idle') as 'idle' | 'analyzing' | 'completed' | 'error'
+  } catch (err) {
+    console.error('Unexpected error in checkAnalysisStatusAction:', err)
+    return 'unknown' as const
+  }
 }
 
 export async function analyzeProjectAction(projectId: string) {
@@ -28,7 +90,7 @@ export async function analyzeProjectAction(projectId: string) {
   if (authError || !user) throw new Error('Unauthorized')
 
   const [projectRes, referencesRes] = await Promise.all([
-    supabase.from('projects').select('*').eq('id', projectId).eq('user_id', user.id).single(),
+    supabase.from('projects').select('*').eq('id', projectId).eq('user_id', user.id).maybeSingle(),
     supabase.from('references_table').select('*').eq('project_id', projectId)
   ])
 
@@ -41,6 +103,9 @@ export async function analyzeProjectAction(projectId: string) {
 
   const generationId = Date.now()
 
+  // Calculate stale cutoff: 10 minutes ago
+  const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+
   const { data: updatedRows, error: updateError } = await supabase
     .from('projects')
     .update({
@@ -48,7 +113,8 @@ export async function analyzeProjectAction(projectId: string) {
       current_generation: generationId
     })
     .eq('id', projectId)
-    .or('analysis_status.neq.analyzing,analysis_status.is.null')
+    .eq('user_id', user.id)
+    .or(`analysis_status.neq.analyzing,analysis_status.is.null,and(analysis_status.eq.analyzing,updated_at.lt."${staleCutoff}")`)
     .select()
 
   if (updateError) {
@@ -56,6 +122,18 @@ export async function analyzeProjectAction(projectId: string) {
   }
 
   if (!updatedRows || updatedRows.length === 0) {
+    // Re-read project status to check if it was just completed by another process
+    const { data: currentProject } = await supabase
+      .from('projects')
+      .select('analysis_status')
+      .eq('id', projectId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (currentProject?.analysis_status === 'completed') {
+      return { success: false, status: 'skipped', reason: 'analysis already completed' }
+    }
+
     return { success: false, status: 'skipped', reason: 'already analyzing' }
   }
 
@@ -70,6 +148,7 @@ export async function analyzeProjectAction(projectId: string) {
       .from('projects')
       .update({ analysis_status: 'error' })
       .eq('id', projectId)
+      .eq('user_id', user.id)
       .eq('current_generation', generationId)
 
     throw new Error('Failed to queue analysis')
