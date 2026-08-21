@@ -1,5 +1,6 @@
 export type UserRole = 'admin' | 'user';
-export type Platform = 'instagram' | 'linkedin' | 'tiktok' | 'x';
+export const PLATFORMS = ['instagram', 'linkedin', 'tiktok', 'x'] as const;
+export type Platform = typeof PLATFORMS[number];
 export type AssetType = 'image' | 'video' | 'carousel';
 export type AssetState = 'queued' | 'generating' | 'ready' | 'failed';
 export type PostState = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed';
@@ -18,6 +19,8 @@ export interface Project {
   description: string | null;
   target_platform: Platform;
   brand_voice: string | null;
+  analysis_status: 'idle' | 'analyzing' | 'completed' | 'error';
+  current_generation: number | null;
   created_at: string;
   updated_at: string;
 }
