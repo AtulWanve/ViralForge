@@ -1,7 +1,8 @@
 export type UserRole = 'admin' | 'user';
 export const PLATFORMS = ['instagram', 'linkedin', 'tiktok', 'x'] as const;
 export type Platform = typeof PLATFORMS[number];
-export type AssetType = 'image' | 'video' | 'carousel';
+export const ASSET_TYPES = ['image', 'video', 'carousel'] as const;
+export type AssetType = typeof ASSET_TYPES[number];
 export type AssetState = 'queued' | 'generating' | 'ready' | 'failed';
 export type PostState = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed';
 
@@ -67,7 +68,7 @@ export interface GeneratedAsset {
   idea_id: string | null; // References ContentIdea.id
   type: AssetType;
   status: AssetState;
-  media_url: string | null; // URL to Supabase Storage once ready
+  media_url: string | null; // Single URL for image/video; JSON-stringified string[] for carousel assets
   error_message: string | null;
   job_id: string | null; // Inngest event ID
   created_at: string;
@@ -80,6 +81,7 @@ export interface ScheduledPost {
   asset_id: string; // References GeneratedAsset.id
   platform: Platform;
   scheduled_for: string; // ISO DateTime
+  timezone: string; // IANA timezone
   status: PostState;
   publish_error: string | null;
   created_at: string;
