@@ -1,15 +1,27 @@
 import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { ProjectDeleteButton } from "@/components/projects/ProjectDeleteButton"
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return null // Layout handles redirect
+  }
+
   // We'll ignore errors for the empty state before DB is fully ready
-  const { data: projects } = await supabase
+  const { data: projects, error } = await supabase
     .from("projects")
     .select("*")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Dashboard projects fetch error:", error)
+  }
 
   return (
     <div className="space-y-6">
@@ -18,7 +30,14 @@ export default async function DashboardPage() {
         <p className="text-muted-foreground">Manage your content generation workspaces.</p>
       </div>
 
-      {!projects || projects.length === 0 ? (
+      {error ? (
+        <Card className="border-destructive/50 bg-destructive/10">
+          <CardContent className="p-6 text-destructive">
+            <h3 className="text-lg font-semibold mb-2">Failed to load projects</h3>
+            <p className="text-sm">An unexpected error occurred while loading your projects. Please try again later.</p>
+          </CardContent>
+        </Card>
+      ) : !projects || projects.length === 0 ? (
         <Card className="border-dashed bg-gray-50/50 dark:bg-gray-800/50">
           <CardContent className="flex flex-col items-center justify-center p-12 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-4">
@@ -28,33 +47,40 @@ export default async function DashboardPage() {
             <p className="text-sm text-muted-foreground max-w-sm mb-6">
               Create a project to start analyzing viral references and generating your own content.
             </p>
-            <Link 
-              href="/dashboard/projects/new" 
-              className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-            >
-              Create First Project
-            </Link>
+            <Button asChild className="h-10 px-4 py-2">
+              <Link
+                href="/dashboard/projects/new"
+                prefetch={false}
+              >
+                Create First Project
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <Link key={project.id} href={`/dashboard/projects/${project.id}`}>
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
-                <CardHeader>
-                  <CardTitle>{project.name}</CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {project.description || "No description provided."}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span className="capitalize">{project.target_platform}</span>
-                    <span>{new Date(project.created_at).toLocaleDateString()}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
+            <div key={project.id} className="relative group block h-full">
+              <div className="absolute top-4 right-4 z-10">
+                <ProjectDeleteButton projectId={project.id} />
+              </div>
+              <Link href={`/dashboard/projects/${project.id}`} prefetch={false} className="block h-full">
+                <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full relative">
+                  <CardHeader className="pr-12">
+                    <CardTitle className="truncate">{project.name}</CardTitle>
+                    <CardDescription className="line-clamp-2">
+                      {project.description || "No description provided."}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto">
+                      <span className="capitalize">{project.target_platform}</span>
+                      <span>{new Date(project.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
           ))}
         </div>
       )}

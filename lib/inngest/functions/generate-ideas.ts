@@ -2,11 +2,27 @@ import { inngest } from "../client";
 import { createClient } from "@supabase/supabase-js";
 import { ai } from "@/lib/gemini";
 import { ContentProfile, Project } from "@/types/database";
+import { Schema, Type } from "@google/genai";
+
+const IdeaSchema: Schema = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      hook: { type: Type.STRING },
+      caption: { type: Type.STRING },
+      hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+      format: { type: Type.STRING },
+      visual_prompt: { type: Type.STRING }
+    },
+    required: ["hook", "caption", "hashtags", "format", "visual_prompt"]
+  }
+};
 
 export const generateIdeas = inngest.createFunction(
   {
     id: "generate-ideas",
-    triggers: { event: "viralforge/ideas.generate" },
+    triggers: { event: "app/generate-ideas" },
   },
   async ({ event, step }) => {
     const { projectId } = event.data;
@@ -50,16 +66,17 @@ export const generateIdeas = inngest.createFunction(
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          responseSchema: IdeaSchema
         }
       });
 
       const text = response.text;
       if (!text) throw new Error("No response from Gemini");
-      
+
       return JSON.parse(text);
     });
 

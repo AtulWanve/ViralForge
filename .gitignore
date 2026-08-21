@@ -42,3 +42,5 @@ next-env.d.ts
 # Claude & AI Tooling
 .claude/
 .cache/
+review.json
+

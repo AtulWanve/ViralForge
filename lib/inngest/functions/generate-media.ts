@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 export const generateMedia = inngest.createFunction(
   {
     id: "generate-media",
-    triggers: { event: "viralforge/media.generate" },
+    triggers: { event: "app/generate-media" },
   },
   async ({ event, step }) => {
     const { ideaId, projectId } = event.data;

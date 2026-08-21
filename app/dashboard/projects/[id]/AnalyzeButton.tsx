@@ -1,45 +1,110 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { analyzeProjectAction, checkAnalysisStatusAction } from '@/app/actions/analyze-actions'
 import { useRouter } from 'next/navigation'
 
-interface AnalyzeButtonProps {
+export interface AnalyzeButtonProps {
   projectId: string
   disabled: boolean
   label: string
+  initialStatus?: string | null
 }
 
-export function AnalyzeButton({ projectId, disabled, label }: AnalyzeButtonProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+export function AnalyzeButton({ projectId, disabled, label, initialStatus }: AnalyzeButtonProps) {
+  const [isPending, startTransition] = useTransition()
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [status, setStatus] = useState(initialStatus)
+  const [isPollingTimeout, setIsPollingTimeout] = useState(false)
   const router = useRouter()
 
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true)
-    try {
-      const res = await fetch(`/api/projects/${projectId}/analyze`, {
-        method: 'POST'
-      })
-      
-      if (!res.ok) throw new Error('Failed to start analysis')
-      
-      // Keep showing loading state for a bit while job starts
-      setTimeout(() => {
-        setIsAnalyzing(false)
-        router.refresh()
-      }, 2000)
-    } catch (error) {
-      console.error(error)
-      setIsAnalyzing(false)
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout
+    let attempts = 0
+    const MAX_ATTEMPTS = 60
+
+    if (status === 'analyzing' && !isPollingTimeout) {
+      intervalId = setInterval(async () => {
+        try {
+          attempts++
+          const currentStatus = await checkAnalysisStatusAction(projectId)
+          if (currentStatus !== 'analyzing') {
+            setStatus(currentStatus)
+            setIsPollingTimeout(false)
+            if (currentStatus === 'error') {
+              setErrorMessage('Analysis failed in background. Please try again.')
+            }
+            router.refresh()
+            return
+          }
+
+          if (attempts >= MAX_ATTEMPTS) {
+            setIsPollingTimeout(true)
+            setErrorMessage('Analysis is taking longer than expected but is still running in the background.')
+            if (intervalId) clearInterval(intervalId)
+          }
+        } catch (error) {
+          console.error("Polling error:", error)
+        }
+      }, 3000)
     }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [status, projectId, router, isPollingTimeout])
+
+  const handleAnalyze = () => {
+    setErrorMessage(null)
+    setIsPollingTimeout(false)
+    startTransition(async () => {
+      try {
+        await analyzeProjectAction(projectId)
+        setStatus('analyzing')
+      } catch (error) {
+        console.error(error)
+        setErrorMessage('Analysis failed to start. Please try again.')
+      }
+    })
   }
 
+  const handleRefreshStatus = () => {
+    setErrorMessage(null)
+    startTransition(async () => {
+      try {
+        const currentStatus = await checkAnalysisStatusAction(projectId)
+        setStatus(currentStatus)
+        if (currentStatus !== 'analyzing') {
+          setIsPollingTimeout(false)
+          if (currentStatus === 'error') {
+            setErrorMessage('Analysis failed in background. Please try again.')
+          }
+          router.refresh()
+        } else {
+          setErrorMessage('Analysis is still running in the background.')
+        }
+      } catch (error) {
+        console.error("Refresh error:", error)
+        setErrorMessage('Failed to check status. Please try again.')
+      }
+    })
+  }
+
+  const isAnalyzing = status === 'analyzing'
+  const isButtonDisabled = disabled || (isAnalyzing && !isPollingTimeout) || isPending
+
   return (
-    <Button 
-      onClick={handleAnalyze} 
-      disabled={disabled || isAnalyzing}
-    >
-      {isAnalyzing ? 'Analyzing...' : label}
-    </Button>
+    <div className="flex flex-col items-end gap-2">
+      <Button
+        onClick={isPollingTimeout ? handleRefreshStatus : handleAnalyze}
+        disabled={isButtonDisabled}
+      >
+        {isPending ? 'Working...' : isPollingTimeout ? 'Refresh Status' : isAnalyzing ? 'Analyzing...' : label}
+      </Button>
+      {errorMessage && (
+        <p className="text-sm text-destructive" role="alert">{errorMessage}</p>
+      )}
+    </div>
   )
 }

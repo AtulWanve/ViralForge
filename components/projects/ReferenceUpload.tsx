@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
+import { createUrlReference, createImageReference } from '@/app/actions/reference-actions'
 import { Platform } from '@/types/database'
 import { useRouter } from 'next/navigation'
 
@@ -14,89 +15,76 @@ export function ReferenceUpload({ projectId }: ReferenceUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadMode, setUploadMode] = useState<'url' | 'image'>('url')
   const [error, setError] = useState<string | null>(null)
+
+  // State for form values
+  const [url, setUrl] = useState('')
+  const [platform, setPlatform] = useState<Platform>('instagram')
+  const [caption, setCaption] = useState('')
+  // We can't easily control file input state, so we use a key to reset it
+  const [fileInputKey, setFileInputKey] = useState(Date.now())
+
   const router = useRouter()
 
   const handleUrlSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsUploading(true)
     setError(null)
-    
-    const formData = new FormData(e.currentTarget)
-    const url = formData.get('url') as string
-    const platform = formData.get('platform') as Platform
-    
+
     try {
-      const supabase = createClient()
-      const { error: dbError } = await supabase
-        .from('references_table')
-        .insert({
-          project_id: projectId,
-          url,
-          platform
-        })
-        
-      if (dbError) throw dbError
-      
-      router.refresh()
+      await createUrlReference(projectId, url, platform)
+
       // reset form
-      ;(e.target as HTMLFormElement).reset()
-    } catch (err: any) {
-      setError(err.message || 'Failed to add reference')
+      setUrl('')
+      setPlatform('instagram')
+    } catch (err: unknown) {
+      setError(err instanceof Error && err.message ? err.message : 'Failed to add reference')
     } finally {
       setIsUploading(false)
     }
   }
-  
+
   const handleImageSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsUploading(true)
     setError(null)
-    
+
     const formData = new FormData(e.currentTarget)
     const file = formData.get('file') as File
-    const caption = formData.get('caption') as string
-    
+
     if (!file || file.size === 0) {
       setError('Please select an image')
       setIsUploading(false)
       return
     }
-    
+
     try {
       const supabase = createClient()
-      
+
       // Upload to storage
       const fileExt = file.name.split('.').pop()
       const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
       const filePath = `${projectId}/${fileName}`
-      
+
       const { error: uploadError, data } = await supabase.storage
         .from('references')
         .upload(filePath, file)
-        
+
       if (uploadError) throw uploadError
-      
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('references')
-        .getPublicUrl(filePath)
-        
+
       // Save to database
-      const { error: dbError } = await supabase
-        .from('references_table')
-        .insert({
-          project_id: projectId,
-          media_url: publicUrl,
-          caption
-        })
-        
-      if (dbError) throw dbError
-      
-      router.refresh()
-      ;(e.target as HTMLFormElement).reset()
-    } catch (err: any) {
+      try {
+        await createImageReference(projectId, filePath, caption)
+      } catch (dbErr) {
+        // Cleanup uploaded file on DB failure
+        await supabase.storage.from('references').remove([filePath])
+        throw dbErr
+      }
+
+      setCaption('')
+      setFileInputKey(Date.now())
+    } catch (err: unknown) {
       console.error(err)
-      setError(err.message || 'Failed to upload image')
+      setError(err instanceof Error && err.message ? err.message : 'Failed to upload image')
     } finally {
       setIsUploading(false)
     }
@@ -129,9 +117,11 @@ export function ReferenceUpload({ projectId }: ReferenceUploadProps) {
         <form onSubmit={handleUrlSubmit} className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Post URL</label>
-            <input 
-              type="url" 
-              name="url" 
+            <input
+              type="url"
+              name="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
               required
               placeholder="https://instagram.com/p/..."
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -139,8 +129,10 @@ export function ReferenceUpload({ projectId }: ReferenceUploadProps) {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Platform</label>
-            <select 
-              name="platform" 
+            <select
+              name="platform"
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value as Platform)}
               required
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -158,9 +150,10 @@ export function ReferenceUpload({ projectId }: ReferenceUploadProps) {
         <form onSubmit={handleImageSubmit} className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Upload Image</label>
-            <input 
-              type="file" 
-              name="file" 
+            <input
+              key={fileInputKey}
+              type="file"
+              name="file"
               accept="image/*"
               required
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -168,8 +161,10 @@ export function ReferenceUpload({ projectId }: ReferenceUploadProps) {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Caption (Optional)</label>
-            <textarea 
-              name="caption" 
+            <textarea
+              name="caption"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
               rows={3}
               placeholder="Paste the caption from the original post..."
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"

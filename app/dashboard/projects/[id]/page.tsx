@@ -1,11 +1,27 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { Project, Reference } from '@/types/database'
+import { Project, Reference, ContentProfile } from '@/types/database'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ReferenceUpload } from '@/components/projects/ReferenceUpload'
 import Image from 'next/image'
 import { AnalyzeButton } from './AnalyzeButton'
+import { ProjectActions } from '@/components/projects/ProjectActions'
+import { ReferenceActions } from '@/components/projects/ReferenceActions'
+
+// Helper to get public URL or signed URL for images
+async function getImageUrl(supabase: any, path: string | null) {
+  if (!path) return null;
+  // If it's a full URL, return it
+  if (path.startsWith('http')) return path;
+
+  // Create signed URL for private bucket
+  const { data } = await supabase.storage
+    .from('references')
+    .createSignedUrl(path, 3600); // 1 hour expiry
+
+  return data?.signedUrl || null;
+}
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>
@@ -21,43 +37,81 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     return <div>Not authenticated</div>
   }
 
-  // Fetch project
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .single()
+  // Fetch project, references and profile concurrently
+  const [
+    { data: project, error: projectError },
+    { data: references, error: referencesError },
+    { data: profile, error: profileError }
+  ] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('references_table')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('content_profiles')
+      .select('*')
+      .eq('project_id', projectId)
+      .maybeSingle()
+  ])
 
-  if (projectError || !project) {
+  if (projectError) {
+    throw new Error('Failed to fetch project')
+  }
+
+  if (!project) {
     notFound()
   }
-  
-  // Fetch references
-  const { data: references } = await supabase
-    .from('references_table')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
+
+  if (referencesError) {
+    throw new Error('Failed to fetch references')
+  }
+
+  if (profileError) {
+    throw new Error('Failed to fetch content profile')
+  }
 
   // Cast project to type to ensure it matches
   const typedProject = project as Project
-  const typedReferences = (references || []) as Reference[]
+  let typedReferences = (references || []) as Reference[]
+  const typedProfile = profile as ContentProfile | null
+
+  // Fetch signed URLs for references that use storage paths
+  typedReferences = await Promise.all(
+    typedReferences.map(async (ref) => ({
+      ...ref,
+      display_url: await getImageUrl(supabase, ref.media_url)
+    }))
+  )
+
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{typedProject.name}</h1>
           <p className="text-muted-foreground mt-1">
             Platform: <span className="capitalize font-medium">{typedProject.target_platform}</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ProjectActions project={typedProject} />
           <Button variant="outline" asChild>
-            <Link href="/dashboard/projects">Back to Projects</Link>
+            <Link href="/dashboard" prefetch={false}>Back to Projects</Link>
           </Button>
 
-          <AnalyzeButton projectId={typedProject.id} disabled={typedReferences.length === 0} label={`Analyze ${typedReferences.length} References`} />
+          <AnalyzeButton
+            projectId={typedProject.id}
+            disabled={typedReferences.length === 0}
+            label={`Analyze ${typedReferences.length} References`}
+            initialStatus={typedProject.analysis_status}
+          />
 
 
         </div>
@@ -83,6 +137,53 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             <h3 className="font-semibold text-lg mb-4">Add Reference</h3>
             <ReferenceUpload projectId={typedProject.id} />
           </div>
+
+          {typedProfile && (
+            <div className="bg-card rounded-lg border p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-lg">Content Profile</h3>
+                <Button variant="default" size="sm" asChild>
+                  <Link href={`/dashboard/projects/${typedProject.id}/generate`}>Go to Generate Content</Link>
+                </Button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Visual Style</p>
+                  <p className="mt-1 text-sm">{typedProfile.visual_style}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Caption Structure</p>
+                  <p className="mt-1 text-sm">{typedProfile.caption_structure}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Format Mix</p>
+                  <p className="mt-1 text-sm">{typedProfile.format_mix}</p>
+                </div>
+                {typedProfile.hooks && typedProfile.hooks.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">Common Hooks</p>
+                    <ul className="list-disc pl-5 text-sm space-y-1">
+                      {typedProfile.hooks.map((hook, i) => (
+                        <li key={i}>{hook}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {typedProfile.content_pillars && typedProfile.content_pillars.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">Content Pillars</p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {typedProfile.content_pillars.map((pillar, i) => (
+                        <span key={i} className="bg-secondary text-secondary-foreground text-xs px-2 py-1 rounded-md">
+                          {pillar}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-card rounded-lg border p-6">
@@ -95,15 +196,15 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             </div>
           ) : (
             <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-              {typedReferences.map((ref) => (
+              {typedReferences.map((ref: any) => (
                 <div key={ref.id} className="border rounded-md p-4 flex gap-4">
-                  {ref.media_url ? (
+                  {ref.display_url ? (
                     <div className="relative w-24 h-24 flex-shrink-0 bg-muted rounded-md overflow-hidden">
-                      <Image 
-                        src={ref.media_url} 
-                        alt="Reference image" 
-                        fill 
-                        className="object-cover" 
+                      <Image
+                        src={ref.display_url}
+                        alt="Reference image"
+                        fill
+                        className="object-cover"
                       />
                     </div>
                   ) : (
@@ -132,6 +233,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                         {ref.caption}
                       </p>
                     )}
+                    <ReferenceActions reference={ref} projectId={typedProject.id} />
                   </div>
                 </div>
               ))}
