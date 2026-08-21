@@ -15,8 +15,21 @@ function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {
   return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
 }
 
-function SheetClose({ ...props }: SheetPrimitive.Close.Props) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
+function SheetClose({ render, ...props }: SheetPrimitive.Close.Props & { asChild?: boolean }) {
+  if (render) {
+    return <SheetPrimitive.Close data-slot="sheet-close" render={render} {...props} />
+  }
+
+  const { asChild, children, ...rest } = props;
+
+  if (asChild && React.isValidElement(children)) {
+    const isButton = children.type === 'button';
+    return <SheetPrimitive.Close data-slot="sheet-close" render={children} nativeButton={isButton} {...rest} />
+  }
+
+  return <SheetPrimitive.Close data-slot="sheet-close" {...rest}>
+    {children}
+  </SheetPrimitive.Close>
 }
 
 function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {

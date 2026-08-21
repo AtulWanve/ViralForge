@@ -4,6 +4,7 @@ import { ContentIdea } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 interface IdeaListProps {
   ideas: ContentIdea[]
@@ -32,14 +33,29 @@ export function IdeaList({ ideas }: IdeaListProps) {
   }
 
   const handleDiscard = async (id: string) => {
-    // We could implement an API route for this, but for the PoC 
-    // we'll just let it sit or implement a quick client-side update
     setProcessingId(id)
     try {
-      // Mock for now, would need actual endpoint
-      alert('Idea discarded')
-      setProcessingId(null)
+      const res = await fetch(`/api/ideas/${id}/discard`, { method: 'POST' })
+      if (!res.ok) throw new Error('Failed to discard')
+      router.refresh()
     } catch (err) {
+      console.error(err)
+      toast.error('Failed to discard idea')
+    } finally {
+      setProcessingId(null)
+    }
+  }
+
+  const handleRegenerate = async (id: string) => {
+    setProcessingId(id)
+    try {
+      const res = await fetch(`/api/ideas/${id}/regenerate`, { method: 'POST' })
+      if (!res.ok) throw new Error('Failed to regenerate')
+      router.refresh()
+    } catch (err) {
+      console.error(err)
+      toast.error('Failed to regenerate idea')
+    } finally {
       setProcessingId(null)
     }
   }
@@ -80,15 +96,22 @@ export function IdeaList({ ideas }: IdeaListProps) {
           
           {idea.status === 'proposed' && (
             <div className="flex gap-2 justify-end mt-2 pt-4 border-t">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="text-destructive hover:bg-destructive/10"
                 onClick={() => handleDiscard(idea.id)}
                 disabled={processingId === idea.id}
               >
-                Discard
+                {processingId === idea.id ? 'Discarding...' : 'Discard'}
               </Button>
-              <Button 
+              <Button
+                variant="outline"
+                onClick={() => handleRegenerate(idea.id)}
+                disabled={processingId === idea.id}
+              >
+                {processingId === idea.id ? 'Regenerating...' : 'Discard & Regenerate'}
+              </Button>
+              <Button
                 className="bg-green-600 hover:bg-green-700 text-white"
                 onClick={() => handleApprove(idea.id)}
                 disabled={processingId === idea.id}
@@ -97,11 +120,23 @@ export function IdeaList({ ideas }: IdeaListProps) {
               </Button>
             </div>
           )}
-          
+
           {idea.status === 'approved' && (
             <div className="flex gap-2 justify-end mt-2 pt-4 border-t">
-              <Button variant="outline" asChild>
+              <Button variant="outline">
                 <a href={`/dashboard/assets`}>View Asset Progress</a>
+              </Button>
+            </div>
+          )}
+
+          {idea.status === 'discarded' && (
+            <div className="flex gap-2 justify-end mt-2 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => handleRegenerate(idea.id)}
+                disabled={processingId === idea.id}
+              >
+                {processingId === idea.id ? 'Regenerating...' : 'Regenerate'}
               </Button>
             </div>
           )}

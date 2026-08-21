@@ -23,19 +23,46 @@ export function AnalyzeButton({ projectId, disabled, label, initialStatus }: Ana
     let intervalId: NodeJS.Timeout
     let attempts = 0
     const MAX_ATTEMPTS = 60
+    let cancelled = false
 
+    // Check status immediately on mount if analyzing
     if (status === 'analyzing' && !isPollingTimeout) {
+      // Immediate check on mount
+      checkAnalysisStatusAction(projectId).then(currentStatus => {
+        if (cancelled || currentStatus === 'unknown') return
+        if (currentStatus !== 'analyzing') {
+          setStatus(currentStatus)
+          if (currentStatus === 'error') {
+            setErrorMessage('Analysis failed or timed out. Please try again.')
+          }
+          router.refresh()
+        }
+      }).catch(error => {
+        if (cancelled) return
+        console.error("Initial status check error:", error)
+      })
+
       intervalId = setInterval(async () => {
         try {
           attempts++
           const currentStatus = await checkAnalysisStatusAction(projectId)
+          if (cancelled) return
+          if (currentStatus === 'unknown') {
+            if (attempts >= MAX_ATTEMPTS) {
+              setIsPollingTimeout(true)
+              setErrorMessage('Analysis is taking longer than expected but is still running in the background.')
+              if (intervalId) clearInterval(intervalId)
+            }
+            return
+          }
           if (currentStatus !== 'analyzing') {
             setStatus(currentStatus)
             setIsPollingTimeout(false)
             if (currentStatus === 'error') {
-              setErrorMessage('Analysis failed in background. Please try again.')
+              setErrorMessage('Analysis failed or timed out. Please try again.')
             }
             router.refresh()
+            if (intervalId) clearInterval(intervalId)
             return
           }
 
@@ -46,11 +73,20 @@ export function AnalyzeButton({ projectId, disabled, label, initialStatus }: Ana
           }
         } catch (error) {
           console.error("Polling error:", error)
+          if (cancelled) return
+          if (attempts >= MAX_ATTEMPTS) {
+            setIsPollingTimeout(true)
+            setErrorMessage('Analysis is taking longer than expected but is still running in the background.')
+            if (intervalId) clearInterval(intervalId)
+          } else {
+            setErrorMessage('Unable to check status right now. Retrying...')
+          }
         }
       }, 3000)
     }
 
     return () => {
+      cancelled = true
       if (intervalId) clearInterval(intervalId)
     }
   }, [status, projectId, router, isPollingTimeout])
@@ -74,6 +110,10 @@ export function AnalyzeButton({ projectId, disabled, label, initialStatus }: Ana
     startTransition(async () => {
       try {
         const currentStatus = await checkAnalysisStatusAction(projectId)
+        if (currentStatus === 'unknown') {
+          setErrorMessage('Unable to check status right now. Please try again.')
+          return
+        }
         setStatus(currentStatus)
         if (currentStatus !== 'analyzing') {
           setIsPollingTimeout(false)

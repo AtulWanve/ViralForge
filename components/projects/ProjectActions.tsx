@@ -60,7 +60,7 @@ export function ProjectActions({ project }: { project: Project }) {
       <Button variant="outline" size="icon" aria-label="Edit project" onClick={() => setIsEditing(true)}>
         <Edit className="h-4 w-4" />
       </Button>
-      <form action={() => deleteProject(project.id)} onSubmit={(e) => {
+      <form action={deleteProject.bind(null, project.id)} onSubmit={(e) => {
         if (!window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
           e.preventDefault()
         }

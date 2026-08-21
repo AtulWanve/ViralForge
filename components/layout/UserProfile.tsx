@@ -21,7 +21,7 @@ export async function UserProfile() {
           {user.email}
         </div>
       </div>
-      <form action={signout}>
+      <form action={async () => { "use server"; await signout(); }}>
         <button className="flex w-full items-center px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-900/10">
           <LogOut className="w-4 h-4 mr-3" />
           Sign Out

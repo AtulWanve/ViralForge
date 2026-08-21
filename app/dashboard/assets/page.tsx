@@ -1,7 +1,9 @@
 import { getAssets } from "@/app/actions/asset-actions"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { ScheduleAssetModal } from "@/components/assets/ScheduleAssetModal"
+import { Platform } from "@/types/database"
 
 export default async function AssetsPage() {
   const assets = await getAssets()
@@ -20,14 +22,26 @@ export default async function AssetsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {assets.map((asset) => (
-            <Card key={asset.id} className="overflow-hidden">
-              {/* TODO: Simple placeholder for actual media rendering, add real media player/image tag when ready */}
+            <Card key={asset.id} className="overflow-hidden flex flex-col">
               <div className="aspect-video bg-muted flex items-center justify-center border-b overflow-hidden relative">
                 {asset.media_url ? (
                   asset.type === 'image' ? (
                     <img src={asset.media_url} alt="Generated asset" className="w-full h-full object-cover" />
                   ) : asset.type === 'video' ? (
                     <video src={asset.media_url} controls className="w-full h-full object-cover" />
+                  ) : asset.type === 'carousel' ? (
+                    <div className="grid grid-cols-3 gap-1 w-full h-full">
+                      {(() => {
+                        try {
+                          const urls: string[] = JSON.parse(asset.media_url)
+                          return urls.map((u, i) => (
+                            <img key={i} src={u} alt={`Carousel slide ${i + 1}`} className="w-full h-full object-cover" />
+                          ))
+                        } catch {
+                          return <a href={asset.media_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all px-4 text-center">View carousel ↗</a>
+                        }
+                      })()}
+                    </div>
                   ) : (
                     <a href={asset.media_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all px-4 text-center">
                       View {asset.type} ↗
@@ -50,7 +64,7 @@ export default async function AssetsPage() {
                 </div>
                 <CardDescription className="capitalize">{asset.type}</CardDescription>
               </CardHeader>
-              <CardContent className="p-4 pt-2">
+              <CardContent className="p-4 pt-2 flex-grow">
                 {asset.error_message && (
                   <p className="text-sm text-destructive mt-2">{asset.error_message}</p>
                 )}
@@ -58,6 +72,15 @@ export default async function AssetsPage() {
                   Generated: {new Date(asset.created_at).toLocaleDateString('en-US', { timeZone: 'UTC' })}
                 </div>
               </CardContent>
+              {asset.status === 'ready' && (
+                <CardFooter className="p-4 pt-0">
+                  <ScheduleAssetModal
+                    assetId={asset.id}
+                    projectId={asset.project_id}
+                    defaultPlatform={(asset.projects?.target_platform as Platform) || "instagram"}
+                  />
+                </CardFooter>
+              )}
             </Card>
           ))}
         </div>

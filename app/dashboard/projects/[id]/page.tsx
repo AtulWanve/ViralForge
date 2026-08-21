@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { AnalyzeButton } from './AnalyzeButton'
 import { ProjectActions } from '@/components/projects/ProjectActions'
 import { ReferenceActions } from '@/components/projects/ReferenceActions'
+import { ProfileEditor } from '@/components/projects/ProfileEditor'
 
 // Helper to get public URL or signed URL for images
 async function getImageUrl(supabase: any, path: string | null) {
@@ -92,17 +93,17 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{typedProject.name}</h1>
+    <div className="space-y-6 w-full max-w-full overflow-x-hidden">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold tracking-tight break-words">{typedProject.name}</h1>
           <p className="text-muted-foreground mt-1">
             Platform: <span className="capitalize font-medium">{typedProject.target_platform}</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <ProjectActions project={typedProject} />
-          <Button variant="outline" asChild>
+          <Button variant="outline">
             <Link href="/dashboard" prefetch={false}>Back to Projects</Link>
           </Button>
 
@@ -117,8 +118,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2 w-full max-w-full">
+        <div className="space-y-6 w-full max-w-full min-w-0">
           <div className="bg-card rounded-lg border p-6">
             <h3 className="font-semibold text-lg mb-2">Details</h3>
             <div className="space-y-4">
@@ -139,12 +140,15 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           </div>
 
           {typedProfile && (
-            <div className="bg-card rounded-lg border p-6">
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-card rounded-lg border p-6 w-full max-w-full">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                 <h3 className="font-semibold text-lg">Content Profile</h3>
-                <Button variant="default" size="sm" asChild>
-                  <Link href={`/dashboard/projects/${typedProject.id}/generate`}>Go to Generate Content</Link>
-                </Button>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                  <ProfileEditor profile={typedProfile} projectId={typedProject.id} />
+                  <Button variant="default" size="sm" className="whitespace-nowrap">
+                    <Link href={`/dashboard/projects/${typedProject.id}/generate`}>Generate Content</Link>
+                  </Button>
+                </div>
               </div>
               <div className="space-y-4">
                 <div>
@@ -186,7 +190,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           )}
         </div>
 
-        <div className="bg-card rounded-lg border p-6">
+        <div className="bg-card rounded-lg border p-6 w-full max-w-full min-w-0">
           <h3 className="font-semibold text-lg mb-4">References ({typedReferences.length})</h3>
           
           {typedReferences.length === 0 ? (
@@ -195,15 +199,16 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
               <p className="text-xs text-muted-foreground mt-1">Upload images or paste URLs to start modeling.</p>
             </div>
           ) : (
-            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 w-full">
               {typedReferences.map((ref: any) => (
-                <div key={ref.id} className="border rounded-md p-4 flex gap-4">
+                <div key={ref.id} className="border rounded-md p-4 flex gap-4 w-full max-w-full min-w-0">
                   {ref.display_url ? (
                     <div className="relative w-24 h-24 flex-shrink-0 bg-muted rounded-md overflow-hidden">
                       <Image
                         src={ref.display_url}
                         alt="Reference image"
                         fill
+                        sizes="96px"
                         className="object-cover"
                       />
                     </div>
@@ -213,7 +218,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     </div>
                   )}
                   
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     {ref.platform && (
                       <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize bg-primary/10 text-primary border-transparent mb-2">
                         {ref.platform}
@@ -221,8 +226,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     )}
                     
                     {ref.url && (
-                      <p className="text-sm font-medium truncate mb-1">
-                        <a href={ref.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                      <p className="text-sm font-medium truncate mb-1 overflow-hidden">
+                        <a href={ref.url} target="_blank" rel="noreferrer" className="text-primary hover:underline truncate">
                           {ref.url}
                         </a>
                       </p>

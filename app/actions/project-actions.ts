@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { Platform, PLATFORMS } from '@/types/database'
+import { contentProfileSchema } from '@/lib/validations/content-profile'
 import { z } from 'zod'
 
 const ProjectSchema = z.object({
@@ -101,4 +102,70 @@ export async function updateProject(projectId: string, formData: FormData) {
 
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath('/dashboard')
+}
+
+const ProfileUpdateSchema = contentProfileSchema.pick({
+  visual_style: true,
+  hooks: true,
+  caption_structure: true,
+  format_mix: true,
+  content_pillars: true
+})
+
+function parseProfileArray(value: unknown): unknown {
+  if (typeof value !== 'string' || value.trim() === '') return []
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function parseProfileFormData(formData: FormData) {
+  const parsed = ProfileUpdateSchema.safeParse({
+    visual_style: formData.get('visual_style'),
+    hooks: parseProfileArray(formData.get('hooks')),
+    caption_structure: formData.get('caption_structure'),
+    format_mix: formData.get('format_mix'),
+    content_pillars: parseProfileArray(formData.get('content_pillars'))
+  })
+  if (!parsed.success) throw new Error(parsed.error.errors[0].message)
+  return parsed.data
+}
+
+export async function updateProfile(projectId: string, formData: FormData) {
+  const supabase = await createClient()
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) throw new Error('Not authenticated')
+
+  // Verify user owns the project
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (projectError || !project) throw new Error('Project not found or access denied')
+
+  const { visual_style, hooks, caption_structure, format_mix, content_pillars } = parseProfileFormData(formData)
+
+  const { data, error } = await supabase
+    .from('content_profiles')
+    .update({
+      visual_style,
+      hooks,
+      caption_structure,
+      format_mix,
+      content_pillars,
+      updated_at: new Date().toISOString()
+    })
+    .eq('project_id', projectId)
+    .select()
+
+  if (error) throw new Error('Failed to update profile: ' + error.message)
+  if (!data || data.length !== 1) throw new Error('Content profile not found')
+
+  revalidatePath(`/dashboard/projects/${projectId}`)
 }

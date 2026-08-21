@@ -21,27 +21,34 @@ export default async function GeneratePage({ params }: GeneratePageProps) {
   }
 
   // Fetch project
-  const { data: project } = await supabase
+  const { data: project, error: projectError } = await supabase
     .from('projects')
     .select('*')
     .eq('id', projectId)
     .single()
 
-  if (!project) notFound()
+  if (projectError) {
+    if (projectError.code === 'PGRST116') notFound()
+    throw projectError
+  }
 
   // Fetch ideas
-  const { data: ideas } = await supabase
+  const { data: ideas, error: ideasError } = await supabase
     .from('content_ideas')
     .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
 
+  if (ideasError) throw ideasError
+
   // Fetch profile to check if they can generate
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('content_profiles')
     .select('*')
     .eq('project_id', projectId)
-    .single()
+    .maybeSingle()
+
+  if (profileError) throw profileError
 
   const typedProject = project as Project
   const typedIdeas = (ideas || []) as ContentIdea[]

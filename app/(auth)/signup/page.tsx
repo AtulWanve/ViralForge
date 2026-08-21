@@ -9,14 +9,14 @@ export const metadata: Metadata = {
 
 export default function SignupPage() {
   return (
-    <div className="container flex h-screen w-screen flex-col items-center justify-center mx-auto">
+    <div className="container flex min-h-[100dvh] w-full flex-col items-center justify-center mx-auto px-4 overflow-x-hidden">
       <Link
         href="/"
         className="absolute left-4 top-4 md:left-8 md:top-8 text-sm font-medium hover:underline"
       >
         Back
       </Link>
-      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+      <div className="mx-auto flex w-full max-w-[calc(100vw-2rem)] flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col space-y-2 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-500">
             Create an account

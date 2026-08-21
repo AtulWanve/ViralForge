@@ -49,7 +49,7 @@ export function ReferenceActions({ reference, projectId }: { reference: Referenc
         <Edit className="h-3 w-3" />
         <span className="sr-only">Edit reference</span>
       </Button>
-      <form action={() => deleteReference(reference.id, projectId)} onSubmit={(e) => {
+      <form action={deleteReference.bind(null, reference.id)} onSubmit={(e) => {
         if (!window.confirm('Are you sure you want to delete this reference?')) {
           e.preventDefault()
         }

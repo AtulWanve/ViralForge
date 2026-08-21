@@ -47,7 +47,7 @@ export default async function DashboardPage() {
             <p className="text-sm text-muted-foreground max-w-sm mb-6">
               Create a project to start analyzing viral references and generating your own content.
             </p>
-            <Button asChild className="h-10 px-4 py-2">
+            <Button  className="h-10 px-4 py-2">
               <Link
                 href="/dashboard/projects/new"
                 prefetch={false}
@@ -58,7 +58,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
             <div key={project.id} className="relative group block h-full">
               <div className="absolute top-4 right-4 z-10">
