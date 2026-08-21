@@ -31,7 +31,7 @@ export async function POST(
 
   // Trigger media generation
   await inngest.send({
-    name: "viralforge/media.generate",
+    name: "app/generate-media",
     data: {
       ideaId,
       projectId: idea.project_id

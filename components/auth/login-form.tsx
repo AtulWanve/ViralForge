@@ -6,19 +6,14 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { toast } from "sonner"
+import { Eye, EyeOff } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { login } from "@/app/actions/auth-actions"
-
-const userAuthSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-})
-
-type FormData = z.infer<typeof userAuthSchema>
+import { userAuthSchema, type UserAuthFormData } from "@/lib/validations/auth"
 
 interface LoginFormProps extends React.HTMLAttributes<HTMLDivElement> {}
 
@@ -27,13 +22,14 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<FormData>({
+  } = useForm<UserAuthFormData>({
     resolver: zodResolver(userAuthSchema),
   })
   const [isLoading, setIsLoading] = React.useState<boolean>(false)
+  const [showPassword, setShowPassword] = React.useState<boolean>(false)
   const router = useRouter()
 
-  async function onSubmit(data: FormData) {
+  async function onSubmit(data: UserAuthFormData) {
     setIsLoading(true)
 
     const formData = new FormData()
@@ -74,14 +70,32 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              placeholder="••••••••"
-              type="password"
-              autoComplete="current-password"
-              disabled={isLoading}
-              {...register("password")}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                placeholder="••••••••"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                disabled={isLoading}
+                className="pr-10"
+                {...register("password")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-pressed={showPassword}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+                <span className="sr-only">
+                  {showPassword ? "Hide password" : "Show password"}
+                </span>
+              </button>
+            </div>
             {errors?.password && (
               <p className="px-1 text-xs text-red-600">
                 {errors.password.message}

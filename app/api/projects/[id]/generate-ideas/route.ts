@@ -19,7 +19,7 @@ export async function POST(
 
   // Trigger idea generation
   await inngest.send({
-    name: "viralforge/ideas.generate",
+    name: "app/generate-ideas",
     data: {
       projectId
     }
