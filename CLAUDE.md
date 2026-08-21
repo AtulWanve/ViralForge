@@ -11,12 +11,12 @@ ViralForge is a web application that helps users produce social media content mo
 5. App schedules and publishes to connected accounts.
 
 ## Constraints & Rules
-- **Stack:** Next.js 16 (App Router), Tailwind, Shadcn-UI, Supabase, Inngest, Gemini API, FFmpeg.
+- **Stack:** Next.js 16 (App Router), Tailwind, Shadcn-UI, Supabase, Inngest, Gemini API, fal.ai (image/video), Sharp, Ayrshare (optional).
 - **Goal:** Working Proof of Concept (PoC) deployed to the web within 7 days.
 - **Shortcuts Allowed:** 
-  - Mock social media publishing (wait 2 seconds, mark published) with one real integration if possible.
+  - Mock social media publishing (wait 2 seconds, 10% fail; failed attempts get a failure status, successful ones get the published status) when no Ayrshare key; real Ayrshare publish when key present.
   - Manual ingestion fallback (upload image + paste caption) instead of complex scraping.
-  - Video generation via FFmpeg slideshows/Ken Burns effects instead of expensive video AI models.
+  - Media generation via `lib/providers/`: real fal.ai when `FAL_KEY` set, else `MockProvider` (picsum/sample mp4). Video generation is a real fal.ai call, NOT an FFmpeg slideshow — FFmpeg-only would not satisfy the assignment's video-generation requirement.
 - **Never Do:** Do not store API keys in code. Use `.env`.
 
 ## Mandatory References (Read BEFORE writing code)
@@ -28,8 +28,11 @@ ViralForge is a web application that helps users produce social media content mo
 ## Architecture Map (Project Worktree)
 - `app/`, `components/` -> Next.js Dashboard (inspired by Nellavio) [See docs/frontend/CONTEXT.md]
 - `app/api/`, `lib/inngest/` -> Next.js API Routes + Inngest Background Jobs [See docs/backend/CONTEXT.md]
+- `lib/providers/` -> Media abstraction: `MediaProvider` interface + `FalProvider`/`MockProvider` + `createMediaProvider()` factory; Ayrshare publishing provider `publishToAyrshare()`
+- `lib/post-processing.ts` -> Sharp image overlays + Supabase Storage upload for generated media
 - `supabase/` -> Supabase (PostgreSQL) [See docs/database/CONTEXT.md]
-- `supabase/` -> Supabase Storage (for generated assets) [See docs/storage/CONTEXT.md]
+- `supabase/` -> Supabase Storage: `references` (private) + `generated-assets` (public) [See docs/storage/CONTEXT.md]
+- `seed.ts` -> Seeds reviewer/admin example project (image and carousel assets use real Supabase Storage URLs; the video asset uses an external BigBuckBunny MP4 URL by default, overridable via `SEED_VIDEO_URL`; mixed calendar states)
 
 ## AI Token Optimization (Gemini/Opus Routing)
 - **Your Role (Executor):** You are running on Gemini. You handle all context gathering, file reading, syntax checking, and code writing. 
